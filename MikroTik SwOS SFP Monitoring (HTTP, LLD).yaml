@@ -1,0 +1,247 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: caf92c61f73c4de59a14d1657ed01002
+      name: Templates
+  templates:
+    - uuid: 93a3f148a5284cc5854ef2fc9df29e88
+      template: 'MikroTik SwOS SFP by HTTP v2'
+      name: 'MikroTik SwOS SFP by HTTP v2'
+      description: 'HTTP-agent based monitoring of MikroTik SwOS SFP diagnostics via /sfp.b and port names via /link.b. Creates LLD-discovered items for RX/TX power, temperature, voltage and TX bias.'
+      groups:
+        - name: Templates
+      items:
+        - uuid: 1fd6f0d42fdb45b384c07f6b8fc1dc03
+          name: 'Mikrotik link raw'
+          type: HTTP_AGENT
+          key: mikrotik.link.raw
+          value_type: TEXT
+          trends: '0'
+          authtype: DIGEST
+          username: '{$MIKROTIK.SFP.USER}'
+          password: '{$MIKROTIK.SFP.PASS}'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var s = value;
+                  
+                  s = s.replace(/([{,])([a-zA-Z0-9_]+):/g, '$1"$2":');
+                  s = s.replace(/'/g, '"');
+                  s = s.replace(/0x[0-9a-fA-F]+/g, function(m) {
+                      return parseInt(m, 16).toString();
+                  });
+                  
+                  var j = JSON.parse(s);
+                  return JSON.stringify(j);
+          url: '{$MIKROTIK.LINK.URL}'
+        - uuid: eabb4a4e5ee04b0fa64c9bafa9df451e
+          name: 'Mikrotik SFP raw'
+          type: HTTP_AGENT
+          key: mikrotik.sfp.raw
+          value_type: TEXT
+          trends: '0'
+          authtype: DIGEST
+          username: '{$MIKROTIK.SFP.USER}'
+          password: '{$MIKROTIK.SFP.PASS}'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var s = value;
+                  
+                  s = s.replace(/([{,])([a-zA-Z0-9_]+):/g, '$1"$2":');
+                  s = s.replace(/'/g, '"');
+                  s = s.replace(/0x[0-9a-fA-F]+/g, function(m) {
+                      return parseInt(m, 16).toString();
+                  });
+                  
+                  var j = JSON.parse(s);
+                  return JSON.stringify(j);
+          url: '{$MIKROTIK.SFP.URL}'
+      discovery_rules:
+        - uuid: d42e0b9293f646ef879bbdd898bd851c
+          name: 'Mikrotik SFP ports discovery'
+          type: DEPENDENT
+          key: mikrotik.sfp.lld
+          delay: '0'
+          item_prototypes:
+            - uuid: a60a3d30913d4bb1ae110cb606cbe056
+              name: '{#SFPNAME} TX bias'
+              type: DEPENDENT
+              key: 'mikrotik.sfp.bias[{#SFPINDEX}]'
+              delay: '0'
+              value_type: FLOAT
+              units: mA
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.tbs[{#SFPINDEX}]'
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var v = Number(value);
+                      if (v <= 0) return null;
+                      return v;
+              master_item:
+                key: mikrotik.sfp.raw
+              trigger_prototypes:
+                - uuid: 494de5d293be42aabd45bd436490c438
+                  expression: 'last(/MikroTik SwOS SFP by HTTP v2/mikrotik.sfp.bias[{#SFPINDEX}])>{$MIKROTIK.SFP.BIAS.WARN}'
+                  name: '{#SFPNAME}: TX bias high'
+                  priority: WARNING
+            - uuid: cf149127b800480cb0d9958025feda41
+              name: '{#SFPNAME} RX power'
+              type: DEPENDENT
+              key: 'mikrotik.sfp.rx[{#SFPINDEX}]'
+              delay: '0'
+              value_type: FLOAT
+              units: dBm
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.rpw[{#SFPINDEX}]'
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var v = Number(value);
+                      if (v <= 0) return null;
+                      return 10 * Math.log(v / 10000) / Math.LN10;
+              master_item:
+                key: mikrotik.sfp.raw
+              trigger_prototypes:
+                - uuid: a724e2c3e8fc4ad5b1c5edc041c992c6
+                  expression: 'last(/MikroTik SwOS SFP by HTTP v2/mikrotik.sfp.rx[{#SFPINDEX}])<={$MIKROTIK.SFP.RX.DISCONNECT}'
+                  name: '{#SFPNAME}: No light / disconnected fiber'
+                  priority: AVERAGE
+                - uuid: 65c8e2ec7b5f49968a45b45ff57dfaac
+                  expression: 'avg(/MikroTik SwOS SFP by HTTP v2/mikrotik.sfp.rx[{#SFPINDEX}],1h)<{$MIKROTIK.SFP.RX.AVG.WARN} and avg(/MikroTik SwOS SFP by HTTP v2/mikrotik.sfp.rx[{#SFPINDEX}],1h)>{$MIKROTIK.SFP.RX.DISCONNECT}'
+                  name: '{#SFPNAME}: RX average degrading'
+                  priority: WARNING
+                - uuid: c08abe8ae83e4946a1e1292c11df01c5
+                  expression: 'last(/MikroTik SwOS SFP by HTTP v2/mikrotik.sfp.rx[{#SFPINDEX}])<{$MIKROTIK.SFP.RX.WARN} and last(/MikroTik SwOS SFP by HTTP v2/mikrotik.sfp.rx[{#SFPINDEX}])>{$MIKROTIK.SFP.RX.DISCONNECT}'
+                  name: '{#SFPNAME}: RX power low'
+                  priority: WARNING
+            - uuid: 6e5b9bea33e7488abcf83d2b1bbf8a48
+              name: '{#SFPNAME} temperature'
+              type: DEPENDENT
+              key: 'mikrotik.sfp.temp[{#SFPINDEX}]'
+              delay: '0'
+              value_type: FLOAT
+              units: °C
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.tmp[{#SFPINDEX}]'
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var v = Number(value);
+                      if (v > 2147483647) v = v - 4294967296;
+                      if (v <= -128) return null;
+                      return v;
+              master_item:
+                key: mikrotik.sfp.raw
+              trigger_prototypes:
+                - uuid: b4127a49dbc1432aa2303acda80f17fa
+                  expression: 'last(/MikroTik SwOS SFP by HTTP v2/mikrotik.sfp.temp[{#SFPINDEX}])>{$MIKROTIK.SFP.TEMP.WARN}'
+                  name: '{#SFPNAME}: Temperature high'
+                  priority: WARNING
+            - uuid: e5f4b9e73c0f4435b8cde07814c710ea
+              name: '{#SFPNAME} TX power'
+              type: DEPENDENT
+              key: 'mikrotik.sfp.tx[{#SFPINDEX}]'
+              delay: '0'
+              value_type: FLOAT
+              units: dBm
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.tpw[{#SFPINDEX}]'
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var v = Number(value);
+                      if (v <= 0) return null;
+                      return 10 * Math.log(v / 10000) / Math.LN10;
+              master_item:
+                key: mikrotik.sfp.raw
+            - uuid: 80eed9058ba0432483ee8a3bfc643ccb
+              name: '{#SFPNAME} voltage'
+              type: DEPENDENT
+              key: 'mikrotik.sfp.vcc[{#SFPINDEX}]'
+              delay: '0'
+              value_type: FLOAT
+              units: V
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.vcc[{#SFPINDEX}]'
+                - type: MULTIPLIER
+                  parameters:
+                    - '0.001'
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var v = Number(value);
+                      if (v <= 0) return null;
+                      return v;
+              master_item:
+                key: mikrotik.sfp.raw
+          master_item:
+            key: mikrotik.link.raw
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var j = JSON.parse(value);
+                  var data = [];
+                  
+                  function decodeHexAscii(hex) {
+                      if (!hex) return "";
+                      var out = "";
+                      for (var i = 0; i < hex.length; i += 2) {
+                          var code = parseInt(hex.substr(i, 2), 16);
+                          if (!isNaN(code) && code > 0) out += String.fromCharCode(code);
+                      }
+                      return out.replace(/\s+$/,'');
+                  }
+                  
+                  for (var i = 0; i < j.nm.length; i++) {
+                      var name = decodeHexAscii(j.nm[i]);
+                      if (!name) {
+                          if (i < 20) name = "SFP" + (i + 1);
+                          else if (i < 24) name = "COMBO" + (i - 19);
+                          else name = "SFP+" + (i - 23);
+                      }
+                  
+                      data.push({
+                          "{#SFPINDEX}": i,
+                          "{#SFPNAME}": name
+                      });
+                  }
+                  
+                  return JSON.stringify({data: data});
+      macros:
+        - macro: '{$MIKROTIK.LINK.URL}'
+          value: 'http://<SWOS-IP>/link.b'
+          description: 'http://<SWOS-IP>/link.b'
+        - macro: '{$MIKROTIK.SFP.BIAS.WARN}'
+          value: '50'
+        - macro: '{$MIKROTIK.SFP.PASS}'
+          value: change_me
+          description: 'change password'
+        - macro: '{$MIKROTIK.SFP.RX.AVG.WARN}'
+          value: '-14'
+        - macro: '{$MIKROTIK.SFP.RX.DISCONNECT}'
+          value: '-35'
+        - macro: '{$MIKROTIK.SFP.RX.WARN}'
+          value: '-15'
+        - macro: '{$MIKROTIK.SFP.TEMP.WARN}'
+          value: '70'
+        - macro: '{$MIKROTIK.SFP.URL}'
+          value: 'http://<SWOS-IP>/sfp.b'
+          description: 'http://<SWOS-IP>/sfp.b'
+        - macro: '{$MIKROTIK.SFP.USER}'
+          value: admin
+          description: 'change user'
