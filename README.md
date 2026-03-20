@@ -97,4 +97,4 @@ Template file included in this repository:
 
 ## License
 
-Use freely at your own risk.
+Licensed under MIT.
